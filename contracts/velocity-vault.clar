@@ -294,3 +294,89 @@
     (ok true)
   )
 )
+
+;; READ-ONLY FUNCTIONS
+
+(define-read-only (get-contract-owner)
+  (ok CONTRACT-OWNER)
+)
+
+(define-read-only (get-stx-pool)
+  (ok (var-get stx-pool))
+)
+
+(define-read-only (get-proposal-count)
+  (ok (var-get proposal-count))
+)
+
+;; PRIVATE HELPER FUNCTIONS
+
+;; Tier Classification Logic
+(define-private (get-tier-info (stake-amount uint))
+  (if (>= stake-amount u10000000)
+    {
+      tier-level: u3,
+      reward-multiplier: u200,
+    } ;; Gold Tier
+    (if (>= stake-amount u5000000)
+      {
+        tier-level: u2,
+        reward-multiplier: u150,
+      } ;; Silver Tier
+      {
+        tier-level: u1,
+        reward-multiplier: u100,
+      } ;; Bronze Tier
+    )
+  )
+)
+
+;; Time-Lock Bonus Calculation
+(define-private (calculate-lock-multiplier (lock-period uint))
+  (if (>= lock-period u8640) ;; 2 months lock
+    u150 ;; 1.5x multiplier
+    (if (>= lock-period u4320) ;; 1 month lock
+      u125 ;; 1.25x multiplier
+      u100 ;; No lock bonus
+    )
+  )
+)
+
+;; Dynamic Reward Calculation
+(define-private (calculate-rewards
+    (user principal)
+    (blocks uint)
+  )
+  (let (
+      (staking-position (unwrap! (map-get? StakingPositions user) u0))
+      (user-position (unwrap! (map-get? UserPositions user) u0))
+      (stake-amount (get amount staking-position))
+      (base-rate (var-get base-reward-rate))
+      (multiplier (get rewards-multiplier user-position))
+    )
+    (/ (* (* (* stake-amount base-rate) multiplier) blocks) u14400000)
+  )
+)
+
+;; Validation Functions
+(define-private (is-valid-description (desc (string-utf8 256)))
+  (and
+    (>= (len desc) u10) ;; Minimum description length
+    (<= (len desc) u256) ;; Maximum description length
+  )
+)
+
+(define-private (is-valid-lock-period (lock-period uint))
+  (or
+    (is-eq lock-period u0) ;; No lock
+    (is-eq lock-period u4320) ;; 1 month
+    (is-eq lock-period u8640) ;; 2 months
+  )
+)
+
+(define-private (is-valid-voting-period (period uint))
+  (and
+    (>= period u100) ;; Minimum voting blocks
+    (<= period u2880) ;; Maximum voting blocks (~1 day)
+  )
+)
